@@ -268,7 +268,7 @@ var state = {
   form: null
 };
 function blankForm(date, per100){
-  return { id:null, date:date, shop:"", memo:"", startMedals:"", cashIn:"", cashOutMedals:"", saveMedals:"", per100:per100, customRate:"" };
+  return { id:null, date:date, shop:"", memo:"", expectedValue:"", startMedals:"", cashIn:"", cashOutMedals:"", saveMedals:"", per100:per100, customRate:"" };
 }
 
 // ===== 集計 =====
@@ -276,11 +276,11 @@ function byDate(){
   var m={}; state.sessions.forEach(function(s){ (m[s.date]=m[s.date]||[]).push(s); }); return m;
 }
 function computeStats(){
-  var profit=0, cash=0, dayMap={};
-  state.sessions.forEach(function(s){ var p=sessionProfit(s); profit+=p; cash+=Number(s.cashIn||0); dayMap[s.date]=(dayMap[s.date]||0)+p; });
+  var profit=0, cash=0, ev=0, dayMap={};
+  state.sessions.forEach(function(s){ var p=sessionProfit(s); profit+=p; cash+=Number(s.cashIn||0); ev+=Number(s.expectedValue||0); dayMap[s.date]=(dayMap[s.date]||0)+p; });
   var days=Object.keys(dayMap).map(function(k){ return dayMap[k]; });
   var wins=days.filter(function(v){ return v>0; }).length;
-  return { profit:profit, cash:cash, played:days.length, wins:wins, winRate:days.length?Math.round(wins/days.length*100):0 };
+  return { profit:profit, cash:cash, ev:ev, played:days.length, wins:wins, winRate:days.length?Math.round(wins/days.length*100):0 };
 }
 
 // ===== フォーム計算 =====
@@ -308,6 +308,7 @@ function render(){
     + '</div><div class="side">'
     + '<div class="k">来店 '+st.played+'回 · 勝率 '+st.winRate+'%</div>'
     + '<div class="v num">投資 '+yen(st.cash)+'円</div>'
+    + '<div class="v num '+cls(st.ev)+'" style="margin-top:3px">期待値 '+signedYen(st.ev)+'円</div>'
     + '</div></div>';
   // タブ
   h += '<div class="tabs">'
@@ -322,8 +323,8 @@ function render(){
 function renderCalendar(){
   var bd=byDate(), cells=buildCalendar(state.viewYear, state.viewMonth);
   var prefix=state.viewYear+"-"+pad(state.viewMonth+1);
-  var monthProfit=0;
-  state.sessions.forEach(function(s){ if(s.date && s.date.indexOf(prefix)===0) monthProfit+=sessionProfit(s); });
+  var monthProfit=0, monthEv=0;
+  state.sessions.forEach(function(s){ if(s.date && s.date.indexOf(prefix)===0){ monthProfit+=sessionProfit(s); monthEv+=Number(s.expectedValue||0); } });
   var today=todayStr();
 
   var h='<div class="mnav"><div class="nav">'
@@ -332,6 +333,7 @@ function renderCalendar(){
     + '<button class="navbtn" data-act="next">›</button>'
     + '</div><div class="msum"><div class="k">月の収支</div>'
     + '<div class="v num '+cls(monthProfit)+'">'+signedYen(monthProfit)+'<span style="font-size:10px;opacity:.6">円</span></div>'
+    + '<div class="v num '+cls(monthEv)+'" style="font-size:11.5px;margin-top:2px">期待値 '+signedYen(monthEv)+'<span style="font-size:9px;opacity:.6">円</span></div>'
     + '</div></div>';
 
   h+='<div class="wd">';
@@ -367,7 +369,11 @@ function renderTrend(st){
     + '<div class="stat"><div class="k">勝率</div><div class="v num">'+st.winRate+'<span class="u">%</span></div></div>'
     + '<div class="stat"><div class="k">投資</div><div class="v num" style="font-size:13px">'+yen(st.cash)+'</div></div>'
     + '</div>';
-  h+='<div class="card"><h3>累計収支の推移</h3><div id="trendChart"></div></div>';
+  h+='<div class="card"><h3>累計収支の推移</h3><div id="trendChart"></div>'
+    + '<div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--ink-dim)">'
+    + '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ink);margin-right:5px"></span>収支</span>'
+    + '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold-bri);margin-right:5px"></span>期待値</span>'
+    + '</div></div>';
   h+='<div class="card"><h3>月別の収支</h3><div id="monthlyChart"></div></div>';
   return h;
 }
@@ -377,23 +383,29 @@ function drawCharts(){
   // 累計推移
   var sorted = state.sessions.slice().sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:a.id-b.id; });
   var cum=0, pts=sorted.map(function(s){ cum+=sessionProfit(s); return cum; });
+  var cumE=0, evPts=sorted.map(function(s){ cumE+=Number(s.expectedValue||0); return cumE; });
   var tc=document.getElementById("trendChart");
   if(pts.length<1){ tc.innerHTML='<div class="blank">記録するとここに推移が表示されます</div>'; }
   else{
-    var W=480,H=150,padX=8,padY=14, data=pts.length===1?[0,pts[0]]:pts;
-    var min=Math.min.apply(null,[0].concat(data)), max=Math.max.apply(null,[0].concat(data)), span=(max-min)||1;
+    var W=480,H=150,padX=8,padY=14;
+    var data=pts.length===1?[0,pts[0]]:pts;
+    var dataE=evPts.length===1?[0,evPts[0]]:evPts;
+    var min=Math.min.apply(null,[0].concat(data,dataE)), max=Math.max.apply(null,[0].concat(data,dataE)), span=(max-min)||1;
     var X=function(i){ return padX+(i/((data.length-1)||1))*(W-padX*2); };
     var Y=function(v){ return padY+(1-(v-min)/span)*(H-padY*2); };
-    var zeroY=Y(0), line="";
+    var zeroY=Y(0), line="", lineE="";
     data.forEach(function(v,i){ line+=(i===0?"M":"L")+X(i).toFixed(1)+","+Y(v).toFixed(1)+" "; });
+    dataE.forEach(function(v,i){ lineE+=(i===0?"M":"L")+X(i).toFixed(1)+","+Y(v).toFixed(1)+" "; });
     var area=line+"L"+X(data.length-1).toFixed(1)+","+zeroY.toFixed(1)+" L"+X(0).toFixed(1)+","+zeroY.toFixed(1)+" Z";
     var pos=data[data.length-1]>=0, col=pos?"var(--plus)":"var(--minus)";
+    var hasEv = evPts.some(function(v){ return v!==0; });
     tc.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="height:150px">'
       + '<defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">'
       + '<stop offset="0%" stop-color="'+col+'" stop-opacity="0.28"/><stop offset="100%" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>'
       + '<line x1="'+padX+'" y1="'+zeroY+'" x2="'+(W-padX)+'" y2="'+zeroY+'" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>'
       + '<path d="'+area+'" fill="url(#tg)"/>'
       + '<path d="'+line+'" fill="none" stroke="'+col+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'
+      + (hasEv?'<path d="'+lineE+'" fill="none" stroke="var(--gold-bri)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>':'')
       + '</svg>';
   }
   // 月別
@@ -485,6 +497,7 @@ function renderDayList(){
       + '<div class="sub">差引 <b class="'+cls(diff)+'">'+(diff>=0?"+":"−")+yen(Math.abs(diff))+'枚</b>'
       + (Number(s.saveMedals)>0?' · 貯玉 <b>'+yen(s.saveMedals)+'枚</b>':'')
       + (Number(s.cashIn)>0?' · 現金 <b>'+yen(s.cashIn)+'円</b>':'')
+      + (Number(s.expectedValue)?' · 期待値 <b class="'+cls(Number(s.expectedValue))+'">'+signedYen(Number(s.expectedValue))+'円</b>':'')
       + '</div>'
       + (s.memo?'<div class="memo-line">'+esc(s.memo)+'</div>':'')
       + '</div>'
@@ -513,6 +526,7 @@ function renderForm(){
     + '<input class="inp text" type="text" placeholder="例：◯◯ホール" value="'+esc(f.shop)+'" data-field="shop"></div></div>'
     + '<div class="row"><div class="field"><label>メモ（任意）</label>'
     + '<textarea class="inp text memo" placeholder="立ち回りや設定推測、台番号など" data-field="memo">'+esc(f.memo)+'</textarea></div></div>'
+    + '<div class="row"><div class="field"><label>期待値（任意）</label><div class="suffix"><input class="inp" type="number" inputmode="numeric" placeholder="0" value="'+esc(f.expectedValue)+'" data-field="expectedValue"><span class="s">円</span></div></div></div>'
     + '<div class="row">'
     + '<div class="field"><label>開始持ち玉（下ろした貯玉）</label><div class="suffix"><input class="inp" type="number" inputmode="numeric" placeholder="0" value="'+esc(f.startMedals)+'" data-field="startMedals"><span class="s">枚</span></div></div>'
     + '<div class="field"><label>追加の現金投資</label><div class="suffix"><input class="inp" type="number" inputmode="numeric" placeholder="0" value="'+esc(f.cashIn)+'" data-field="cashIn"><span class="s">円</span></div></div>'
@@ -566,6 +580,7 @@ function doSave(){
   if(p<=0){ toast("交換率を入力してください"); return; }
   if(f.cashOutMedals===""&&f.saveMedals===""&&f.startMedals===""&&f.cashIn===""){ toast("枚数か金額を入力してください"); return; }
   var rec={ id:f.id||Date.now(), date:f.date, shop:(f.shop||"").trim(), memo:(f.memo||"").trim(),
+    expectedValue:Number(f.expectedValue||0),
     startMedals:Number(f.startMedals||0), cashIn:Number(f.cashIn||0),
     cashOutMedals:Number(f.cashOutMedals||0), saveMedals:Number(f.saveMedals||0), per100:p };
   if(f.id){ state.sessions=state.sessions.map(function(s){ return s.id===f.id?rec:s; }); }
@@ -580,6 +595,7 @@ function editSession(id){
   var isPreset=RATE_PRESETS.some(function(r){ return r.per100===s.per100; });
   var legacy=s.cashOutMedals===undefined&&s.saveMedals===undefined&&s.endMedals!==undefined;
   state.form={ id:s.id, date:s.date, shop:s.shop||"", memo:s.memo||"",
+    expectedValue:String(s.expectedValue||""),
     startMedals:String(s.startMedals||""), cashIn:String(s.cashIn||""),
     cashOutMedals:String(legacy?(s.endMedals||""):(s.cashOutMedals||"")),
     saveMedals:String(legacy?"":(s.saveMedals||"")),
