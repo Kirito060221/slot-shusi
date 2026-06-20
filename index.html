@@ -137,6 +137,7 @@ button{ font-family:inherit; }
 .di .shop .rl{ font-size:10px; color:var(--ink-faint); font-weight:500; }
 .di .sub{ font-size:10.5px; color:var(--ink-dim); margin-top:2px; font-variant-numeric:tabular-nums; }
 .di .sub b{ color:var(--ink); }
+.di .memo-line{ font-size:11px; color:var(--ink-dim); margin-top:5px; white-space:pre-wrap; line-height:1.5; word-break:break-word; }
 .di .amt{ font-size:15px; font-weight:700; flex:none; }
 .di .del{ width:30px; height:30px; border-radius:7px; border:1px solid var(--line); background:transparent; color:var(--ink-faint); font-size:15px; cursor:pointer; flex:none; }
 .di .del:active{ background:var(--panel); }
@@ -150,6 +151,7 @@ button{ font-family:inherit; }
 .inp::placeholder{ color:var(--ink-faint); font-weight:500; }
 .inp:focus{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(205,162,78,0.14); }
 .inp.text{ font-family:'Noto Sans JP',sans-serif; font-size:16px; }
+.inp.memo{ min-height:60px; resize:vertical; line-height:1.5; }
 .suffix{ position:relative; }
 .suffix .s{ position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--ink-faint); pointer-events:none; font-weight:500; }
 .suffix .inp{ padding-right:32px; }
@@ -255,7 +257,7 @@ var state = {
   form: null
 };
 function blankForm(date, per100){
-  return { id:null, date:date, shop:"", startMedals:"", cashIn:"", cashOutMedals:"", saveMedals:"", per100:per100, customRate:"" };
+  return { id:null, date:date, shop:"", memo:"", startMedals:"", cashIn:"", cashOutMedals:"", saveMedals:"", per100:per100, customRate:"" };
 }
 
 // ===== 集計 =====
@@ -448,7 +450,9 @@ function renderDayList(){
       + '<div class="sub">差引 <b class="'+cls(diff)+'">'+(diff>=0?"+":"−")+yen(Math.abs(diff))+'枚</b>'
       + (Number(s.saveMedals)>0?' · 貯玉 <b>'+yen(s.saveMedals)+'枚</b>':'')
       + (Number(s.cashIn)>0?' · 現金 <b>'+yen(s.cashIn)+'円</b>':'')
-      + '</div></div>'
+      + '</div>'
+      + (s.memo?'<div class="memo-line">'+esc(s.memo)+'</div>':'')
+      + '</div>'
       + '<div class="amt num '+cls(p)+'">'+signedYen(p)+'</div>'
       + '<button class="del" data-act="del" data-id="'+s.id+'">×</button>'
       + '</div>';
@@ -472,6 +476,8 @@ function renderForm(){
   var h='<div class="fhead">'+headTxt+'</div>'
     + '<div class="row"><div class="field"><label>店名・機種（任意）</label>'
     + '<input class="inp text" type="text" placeholder="例：◯◯ホール" value="'+esc(f.shop)+'" data-field="shop"></div></div>'
+    + '<div class="row"><div class="field"><label>メモ（任意）</label>'
+    + '<textarea class="inp text memo" placeholder="立ち回りや設定推測、台番号など" data-field="memo">'+esc(f.memo)+'</textarea></div></div>'
     + '<div class="row">'
     + '<div class="field"><label>開始持ち玉（下ろした貯玉）</label><div class="suffix"><input class="inp" type="number" inputmode="numeric" placeholder="0" value="'+esc(f.startMedals)+'" data-field="startMedals"><span class="s">枚</span></div></div>'
     + '<div class="field"><label>追加の現金投資</label><div class="suffix"><input class="inp" type="number" inputmode="numeric" placeholder="0" value="'+esc(f.cashIn)+'" data-field="cashIn"><span class="s">円</span></div></div>'
@@ -524,7 +530,7 @@ function doSave(){
   var p=activePer100(); var f=state.form;
   if(p<=0){ toast("交換率を入力してください"); return; }
   if(f.cashOutMedals===""&&f.saveMedals===""&&f.startMedals===""&&f.cashIn===""){ toast("枚数か金額を入力してください"); return; }
-  var rec={ id:f.id||Date.now(), date:f.date, shop:(f.shop||"").trim(),
+  var rec={ id:f.id||Date.now(), date:f.date, shop:(f.shop||"").trim(), memo:(f.memo||"").trim(),
     startMedals:Number(f.startMedals||0), cashIn:Number(f.cashIn||0),
     cashOutMedals:Number(f.cashOutMedals||0), saveMedals:Number(f.saveMedals||0), per100:p };
   if(f.id){ state.sessions=state.sessions.map(function(s){ return s.id===f.id?rec:s; }); }
@@ -538,7 +544,7 @@ function editSession(id){
   var s=state.sessions.filter(function(x){ return x.id===id; })[0]; if(!s) return;
   var isPreset=RATE_PRESETS.some(function(r){ return r.per100===s.per100; });
   var legacy=s.cashOutMedals===undefined&&s.saveMedals===undefined&&s.endMedals!==undefined;
-  state.form={ id:s.id, date:s.date, shop:s.shop||"",
+  state.form={ id:s.id, date:s.date, shop:s.shop||"", memo:s.memo||"",
     startMedals:String(s.startMedals||""), cashIn:String(s.cashIn||""),
     cashOutMedals:String(legacy?(s.endMedals||""):(s.cashOutMedals||"")),
     saveMedals:String(legacy?"":(s.saveMedals||"")),
