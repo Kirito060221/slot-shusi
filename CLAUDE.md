@@ -4,12 +4,15 @@
 
 ## 構成・方針（重要）
 
-- **単一ファイル構成**：すべて `index.html` 1つに収める（HTML + CSS + vanilla JS）。
-  Reactや外部ライブラリは使わない。Google Fontsのみ`@import`で読み込み（フォールバックあり）。
-- **単一ファイルを保つことが最優先**。友達にファイルやURLを配って使ってもらうため、ビルド工程や依存を増やさない。
+- **3ファイル構成**：`index.html`（マークアップ）/ `style.css`（スタイル）/ `app.js`（ロジック）。
+  HTMLから相対パスで `style.css` と `app.js` を読み込む。`app.js` は `<body>` 末尾で読み込み、
+  `#app` などのDOMが存在する前提（DOMContentLoaded待ちはしていない）。
+  Reactや外部ライブラリは使わない。ビルド工程も持たない（素の3ファイルをそのまま配置）。
+  Google Fontsのみ `style.css` 内の`@import`で読み込み（フォールバックあり）。
+- **配布は URL（GitHub Pages）前提**。3ファイルを一緒に置くこと。ファイル単体を配るとスタイル/動作が欠ける。
 - **データ保存はlocalStorage**（サーバーなし）。キーは `sessions`（記録の配列）と `lastRate`（最後に使った交換率）。
-- **配布**：GitHub Pages。リポジトリ直下の `index.html` が公開URLのトップになる。
-  更新は `index.html` を上書きコミットするだけ。
+- **配布**：GitHub Pages。リポジトリ直下の `index.html` が公開URLのトップになり、同階層の `style.css` / `app.js` を読む。
+  更新は変更したファイルを上書きコミットするだけ。
 - スマホ最適化済み：viewport / セーフエリア対応 / ホーム画面追加メタ / 入力欄は16pxで自動ズーム防止。
 
 ## 収支計算ロジック（仕様の核。変更時は要注意）
